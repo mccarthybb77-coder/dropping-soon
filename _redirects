@@ -1,4 +1,2 @@
-# Serve cloaked hold page directly, bypass SPA client-side routing
-/hold          /hold/index.html   200
-/hold.html     /hold/index.html   200
-/hold/         /hold/index.html   200
+# /hold is handled by functions/hold.js (returns 404 to match ttsauce behavior)
+# — no static route for /hold.
