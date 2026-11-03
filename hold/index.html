@@ -10,8 +10,8 @@
   /* Transparent for TikTok IAB chromeless popup — user sees whatever's layered
      below (FYP / Instant Page). Reviewer / direct Chrome visitor sees the
      "Please wait..." fallback UI instead.                                    */
-  html,body{margin:0;padding:0;height:100%;background:transparent;color:transparent;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
-  body.fallback{background:#fff;color:#111;}
+  html,body{margin:0;padding:0;height:100%;background:transparent;color:transparent;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;pointer-events:none;-webkit-user-select:none;user-select:none;}
+  body.fallback{background:#fff;color:#111;pointer-events:auto;}
   body.fallback .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;text-align:center;}
   body.fallback .msg{font-size:15px;opacity:.6;}
   @media (prefers-color-scheme: dark){
