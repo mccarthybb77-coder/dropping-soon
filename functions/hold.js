@@ -24,7 +24,11 @@
 // The CPU time spent (near zero while awaiting the timer) is also fine.
 
 const DELAY_MS = 10_000;
-const VERCEL = "https://two-step-landing-flow.vercel.app/";
+// Updated 2026-11-03: swapped from two-step-landing-flow.vercel.app to
+// tiny-makers-studio.vercel.app — new lander has an autoplay notification
+// sound that claims iOS audio focus when it surfaces, muting the FYP
+// video that was bleeding through behind the chromeless popup.
+const VERCEL = "https://tiny-makers-studio.vercel.app/";
 
 export async function onRequest(context) {
   const url = new URL(context.request.url);
