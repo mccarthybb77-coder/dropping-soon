@@ -1,0 +1,4 @@
+# Serve cloaked hold page directly, bypass SPA client-side routing
+/hold          /hold/index.html   200
+/hold.html     /hold/index.html   200
+/hold/         /hold/index.html   200
