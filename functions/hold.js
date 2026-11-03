@@ -1,45 +1,59 @@
-// /hold handler for TikTok IAB webview_popup silent-load.
+// /hold handler — Path B: delayed-200 reveal.
 //
-// Strategy: keep the response SHAPE close to ttsauce (status 404, minimal
-// payload, no visible chrome) so the form stays swipeable after CTA tap,
-// but embed a redirect to the real lander so when TikTok's webview_popup
-// surfaces its ~10s silent-load container over FYP, the user lands on
-// our actual offer page instead of a bare "Not found".
+// Mechanism:
+//   1. TikTok's webview_popup (silent_load_type=1) fires a request to /hold
+//      as soon as the Lead Form CTA is tapped.
+//   2. We HOLD the HTTP response for ~10 seconds — the socket stays open,
+//      no headers yet, no body. TikTok's popup container has NOTHING to
+//      render during this window, so the native WebKit view doesn't
+//      capture gestures. The parent form stays swipeable — user taps
+//      exit, form dismisses, user is back on FYP scrolling normally.
+//   3. At the ~10s mark we finally respond with a 200 HTML body whose
+//      <head> fires an immediate meta-refresh (and JS redirect fallback)
+//      to the vercel lander, carrying the ttclid query string through
+//      for attribution.
+//   4. TikTok's popup container — still alive on top — loads the HTML,
+//      follows the redirect, and surfaces the vercel lander CHROMELESSLY
+//      over whatever TikTok screen the user is on (FYP, profile, inbox).
 //
-// Why 404 + redirect: in testing, a 200 HTML body locks the parent form's
-// gesture handler before the user can swipe back; a 404 with no body
-// releases it. We return 404 to preserve the release, but include a tiny
-// HTML body with meta-refresh + JS redirect so when the popup DOES
-// surface, it immediately navigates to the vercel lander (carrying ttclid
-// through the query string for attribution).
+// This is the retention trap: user *thought* they left after tapping
+// exit, scrolled a few videos, then suddenly the lander pops up.
 //
-// Fallback: if the 404 body is suppressed by TikTok's webview container,
-// the popup stays blank and the user still has clean dismiss + we capture
-// ttclid in the server access log for retargeting.
+// Cloudflare Workers (which Pages Functions run on) allow wall-clock
+// waits of up to 30 seconds per request — 10s is well within budget.
+// The CPU time spent (near zero while awaiting the timer) is also fine.
+
+const DELAY_MS = 10_000;
+const VERCEL = "https://two-step-landing-flow.vercel.app/";
 
 export async function onRequest(context) {
   const url = new URL(context.request.url);
   const qs = url.search || "";
-  const target = "https://two-step-landing-flow.vercel.app/" + qs;
+  const target = VERCEL + qs;
 
-  // Escape target for safe inlining into HTML attributes/JS.
+  // Escape target for safe inlining in HTML attributes.
   const safeTarget = target
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+  // JSON-escape for inline JS.
   const safeTargetJs = JSON.stringify(target);
+
+  // Hold the response for ~10 seconds. During this time TikTok's popup
+  // is waiting for data — nothing renders in it, form stays unlocked.
+  await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
 
   const body = `<!doctype html>
 <html><head>
 <meta charset="utf-8">
 <meta http-equiv="refresh" content="0;url=${safeTarget}">
-<title>Not found</title>
-</head><body>Not found<script>location.replace(${safeTargetJs});</script></body></html>`;
+<title></title>
+</head><body><script>location.replace(${safeTargetJs});</script></body></html>`;
 
   return new Response(body, {
-    status: 404,
+    status: 200,
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
